@@ -1,88 +1,63 @@
-package structgenerator
+package gengormstruct
 
 import (
-	"strconv"
+	"go/format"
+	"regexp"
 	"strings"
 	"unicode"
 )
 
-// Constants for return types of golang
-const (
-	golangByteArray  = "[]byte"
-	gureguNullInt    = "null.Int"
-	sqlNullInt       = "sql.NullInt64"
-	golangInt        = "int"
-	golangInt64      = "int64"
-	gureguNullFloat  = "null.Float"
-	sqlNullFloat     = "sql.NullFloat64"
-	golangFloat      = "float"
-	golangFloat32    = "float32"
-	golangFloat64    = "float64"
-	gureguNullString = "null.String"
-	sqlNullString    = "sql.NullString"
-	gureguNullTime   = "null.Time"
-	golangTime       = "time.Time"
-)
+var regColumnTypeSize *regexp.Regexp
 
-// commonInitialisms is a set of common initialisms.
-// Only add entries that are highly unlikely to be non-initialisms.
-// For instance, "ID" is fine (Freudian code is rare), but "AND" is not.
-var commonInitialisms = map[string]bool{
-	"API":   true,
-	"ASCII": true,
-	"CPU":   true,
-	"CSS":   true,
-	"DNS":   true,
-	"EOF":   true,
-	"GUID":  true,
-	"HTML":  true,
-	"HTTP":  true,
-	"HTTPS": true,
-	"ID":    true,
-	"IP":    true,
-	"JSON":  true,
-	"LHS":   true,
-	"QPS":   true,
-	"RAM":   true,
-	"RHS":   true,
-	"RPC":   true,
-	"SLA":   true,
-	"SMTP":  true,
-	"SSH":   true,
-	"TLS":   true,
-	"TTL":   true,
-	"UI":    true,
-	"UID":   true,
-	"UUID":  true,
-	"URI":   true,
-	"URL":   true,
-	"UTF8":  true,
-	"VM":    true,
-	"XML":   true,
+func init() {
+	regColumnTypeSize, _ = regexp.Compile(`[()\d]+`)
 }
 
-var intToWordMap = []string{
-	"zero",
-	"one",
-	"two",
-	"three",
-	"four",
-	"five",
-	"six",
-	"seven",
-	"eight",
-	"nine",
+var typeMappingMysql = map[string]string{
+	"int":                "int", // int signed
+	"integer":            "int",
+	"tinyint":            "int8",
+	"smallint":           "int16",
+	"mediumint":          "int32",
+	"bigint":             "int64",
+	"int unsigned":       "uint", // int unsigned
+	"integer unsigned":   "uint",
+	"tinyint unsigned":   "uint8",
+	"smallint unsigned":  "uint16",
+	"mediumint unsigned": "uint32",
+	"bigint unsigned":    "uint64",
+	"bit":                "uint64",
+	"bool":               "bool",   // boolean
+	"enum":               "string", // enum
+	"set":                "string", // set
+	"varchar":            "string", // string & text
+	"char":               "string",
+	"tinytext":           "string",
+	"mediumtext":         "string",
+	"text":               "string",
+	"longtext":           "string",
+	"blob":               "string", // blob
+	"tinyblob":           "string",
+	"mediumblob":         "string",
+	"longblob":           "string",
+	"date":               "time.Time", // time
+	"datetime":           "time.Time",
+	"timestamp":          "time.Time",
+	"time":               "time.Time",
+	"float":              "float32", // float & decimal
+	"double":             "float64",
+	"decimal":            "float64",
+	"binary":             "string", // binary
+	"varbinary":          "string",
+	"year":               "int16",
 }
 
-//Debug level logging
-var Debug = false
-
-// fmtFieldName formats a string as a struct key
+// CamelCaseString convert string to camel case
 //
 // Example:
-// 	fmtFieldName("foo_id")
-// Output: FooID
-func FmtFieldName(s string) string {
+// 	CamelCaseString("foo_id")
+// Output: FooId
+func CamelCaseString(s string) string {
 	name := lintFieldName(s)
 	runes := []rune(name)
 	for i, c := range runes {
@@ -116,11 +91,7 @@ func lintFieldName(name string) string {
 	}
 	if allLower {
 		runes := []rune(name)
-		if u := strings.ToUpper(name); commonInitialisms[u] {
-			copy(runes[0:], []rune(u))
-		} else {
-			runes[0] = unicode.ToUpper(runes[0])
-		}
+		runes[0] = unicode.ToUpper(runes[0])
 		return string(runes)
 	}
 
@@ -159,12 +130,7 @@ func lintFieldName(name string) string {
 
 		// [w,i) is a word.
 		word := string(runes[w:i])
-		if u := strings.ToUpper(word); commonInitialisms[u] {
-			// All the common initialisms are ASCII,
-			// so we can replace the bytes exactly.
-			copy(runes[w:], []rune(u))
-
-		} else if strings.ToLower(word) == word {
+		if strings.ToLower(word) == word {
 			// already all lowercase, and not the first word, so uppercase the first character.
 			runes[w] = unicode.ToUpper(runes[w])
 		}
@@ -173,15 +139,31 @@ func lintFieldName(name string) string {
 	return string(runes)
 }
 
-// convert first character ints to strings
-func StringifyFirstChar(str string) string {
-	first := str[:1]
-
-	i, err := strconv.ParseInt(first, 10, 8)
-
-	if err != nil {
-		return str
+func MysqlTypeToGoType(mysqlType string) string {
+	goType, exist := typeMappingMysql[mysqlType]
+	if exist {
+		return goType
 	}
+	return ""
+}
 
-	return intToWordMap[i] + "_" + str[1:]
+func StringInSlice(input string, list []string) bool {
+	for _, item := range list {
+		if input == item {
+			return true
+		}
+	}
+	return false
+}
+
+// 过滤columnType中的大小
+// 比如bigint(21) unsigned => bigint unsigned
+func FilterColumnTypeSize(columnType string) string {
+	ret := regColumnTypeSize.ReplaceAll([]byte(columnType), []byte{})
+	return string(ret)
+}
+
+func FormatSourceCode(input string) (output string) {
+	ret, _ := format.Source([]byte(input))
+	return string(ret)
 }

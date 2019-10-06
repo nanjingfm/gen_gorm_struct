@@ -1,52 +1,38 @@
-package cmd
+package main
 
 import (
 	"flag"
 	"fmt"
+	gengormstruct "github.com/nanjingfm/gen_gorm_struct"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
 var (
-	structName string
-	dbUser     string
-	dbPassword string
-	dbHost     string
-	dbPort     int
-	dbDatabase string
-	table      string
-	//h          bool
+	tableName string
+	config    gengormstruct.DbConfig
+	option    gengormstruct.OutputOption
 )
 
 func init() {
-	//flag.BoolVar(&h, "h", false, "show help")
-	flag.StringVar(&structName, "s", "dbstruct", "struct name")
-	flag.StringVar(&dbUser, "u", "root", "db user")
-	flag.StringVar(&dbPassword, "p", "root@dev", "db password")
-	flag.StringVar(&dbHost, "h", "172.172.177.20", "db host")
-	flag.IntVar(&dbPort, "P", 33066, "db port")
-	flag.StringVar(&dbDatabase, "d", "dynamic", "db name")
-	flag.StringVar(&table, "t", "", "table name")
+	flag.StringVar(&config.DbUser, "u", "root", "db user")
+	flag.StringVar(&config.DbPassword, "p", "123456", "db password")
+	flag.StringVar(&config.DbHost, "h", "127.0.0.1", "db host")
+	flag.IntVar(&config.DbPort, "P", 3306, "db port")
+	flag.StringVar(&config.DbName, "d", "test", "db name")
+	flag.StringVar(&tableName, "t", "", "table name")
+	flag.BoolVar(&option.JsonTag, "json", false, "with json tag")
+	flag.BoolVar(&option.FormTag, "form", false, "with form tag")
 }
 
 func main() {
-	var (
-		result string
-		err    error
-		sg     DbStruct
-	)
+	var err error
 
 	flag.Parse()
-
-	sg, err = NewDbStruct(dbDatabase, dbUser, dbPassword, dbHost, dbPort)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	if table != "" {
-		result, err = sg.GenTable(table)
+	if tableName != "" {
+		err = gengormstruct.GenGormTable(config, option, tableName)
 	} else {
-		result, err = sg.GenDatabase()
+		err = gengormstruct.GenOrmDatabase(config, option)
 	}
 
 	if err != nil {
@@ -54,5 +40,4 @@ func main() {
 		return
 	}
 
-	fmt.Println(result)
 }
