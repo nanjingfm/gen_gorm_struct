@@ -2,6 +2,7 @@
 生成gorm结构体
 
 如果你使用gorm并且你也在使用mysql，而且你也需要根据mysql表生成结构体，那么就可以使用整个工具。
+可以选择增加form和json tag
 
 ## 用法
 ```shell script
